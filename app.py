@@ -1,18 +1,18 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-import random
+import secrets
 from faker import Faker
-from modeldb import db, User, Role  # Import db, User, and Role from models.py
+from modeldb import db, User, Role  
 import os
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SelectField, SubmitField
 from wtforms.validators import DataRequired, Length, EqualTo, Regexp, ValidationError
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key'  # Change this!
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dss.db'  
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  
+app.config['SECRET_KEY'] = secrets.token_hex(16)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dss.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)  # Инициализируем базу данных внутри приложения
 
@@ -23,10 +23,7 @@ login_manager.login_message = "Для доступа к этой страниц�
 
 fake = Faker(['ru_RU']) 
 
-# with app.app_context(): #создает контекст приложения чтобы работала бд
-#     db.create_all()
 
-#
 def validate_password(form, field):
     password = field.data
     if not (len(password) >= 8 and len(password) <= 128):
@@ -158,7 +155,7 @@ def delete_user(user_id):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))  # Fetch user from the database
+    return User.query.get(int(user_id))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -168,7 +165,7 @@ def login():
         password = request.form.get('password')
         remember = True if request.form.get('remember') else False
 
-        user = User.query.filter_by(username=username).first() # Fetch user from the database
+        user = User.query.filter_by(username=username).first()
 
         if user and user.check_password(password):
             login_user(user, remember=remember)
@@ -210,21 +207,11 @@ def change_password():
 
 
 @app.route('/')
-@login_required
 def index():
     users = User.query.all()
     roles = Role.query.all()
     form = EditUserForm()  # Создаем экземпляр формы
     return render_template('index.html', users=users, roles=roles, form=form) 
-
-# @app.route('/admin')
-# @login_required
-# def admin():
-# # Проверка, является ли текущий пользователь админом (например, по роли)
-#  if current_user.role != 'admin':
-#   flash("У вас нет прав доступа к этой странице.", "danger")
-#   return redirect(url_for('index')) # Или другая страница
-#  return render_template('admin.html')
 
 
 @app.route('/create_db')
@@ -260,7 +247,6 @@ def fill_db():
 
 
 if __name__ == '__main__':
-    # Create the database if it doesn't exist
     if not os.path.exists('dss.db'):
         with app.app_context():
             db.create_all()  # Создаем таблицы

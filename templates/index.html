@@ -1,28 +1,30 @@
-<!-- templates/index.html -->
 {% extends 'base.html' %}
 
 {% block content %}
     <h2>Список пользователей</h2>
     <table class="table">
         <thead>
-            <tr><th></th><th>ФИО</th><th>Роль</th><th>Действия</th></tr>
+            <tr><th>id</th><th>ФИО</th><th>Роль</th><th>Дата создания</th><th>Действия</th></tr>
         </thead>
         <tbody>
             {% for user in users %}
                 <tr>
-                    <td>{{ loop.index }}</td>
+                    <td>{{ user.id }}</td>
                     <td>{{ user.last_name or '' }} {{ user.first_name or '' }} {{ user.middle_name or '' }}</td>
                     <td>{{ user.role.name if user.role else 'Не указана' }}</td>
+                    <td>{{ user.created_at }}</td>
                     <td>
                         <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#userModal{{ user.id }}">
                             <i class="bi bi-eye"></i>
                         </button>
-                        <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ user.id }}">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ user.id }}">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        {% if current_user.is_authenticated %}  <!-- Проверка авторизации -->
+                            <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ user.id }}">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ user.id }}">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        {% endif %}
                     </td>
                 </tr>
 
@@ -35,11 +37,13 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
                             <div class="modal-body">
+                                <p><strong>ID:</strong> {{ user.id }}</p>
                                 <p><strong>Логин:</strong> {{ user.username }}</p>
                                 <p><strong>Имя:</strong> {{ user.first_name }}</p>
                                 <p><strong>Фамилия:</strong> {{ user.last_name }}</p>
                                 <p><strong>Отчество:</strong> {{ user.middle_name }}</p>
                                 <p><strong>Роль:</strong> {{ user.role.name if user.role else 'Не указана' }}</p>
+                                <p><strong>Хеш пароля:</strong> <span style="word-wrap: break-word;">{{ user.password_hash }}</span></p>
                                 <p><strong>Дата создания:</strong> {{ user.created_at }}</p>
                             </div>
                             <div class="modal-footer">
@@ -113,9 +117,7 @@
                 var editModal = document.querySelectorAll('[id^="editModal"]');
                 editModal.forEach(function(editModalEl) {
                     editModalEl.addEventListener('show.bs.modal', function (event) {
-                        // Button that triggered the modal
                         var button = event.relatedTarget
-                        // Extract info from data attributes
                         var userId = button.closest('tr').querySelector('td:first-child').textContent;
                         var recipient = button.getAttribute('data-bs-userid')
                         var userName = button.getAttribute('data-bs-username')
@@ -123,10 +125,6 @@
                         var userLastName = button.getAttribute('data-bs-lastname')
                         var userMiddleName = button.getAttribute('data-bs-middlename')
                         var userRole = button.getAttribute('data-bs-role')
-                        // If necessary, you could initiate an AJAX request here
-                        // and then do the updating in a callback.
-                        //
-                        // Update the modal's content.
                         var modalTitle = editModalEl.querySelector('.modal-title')
                         var modalBodyInput = editModalEl.querySelector('.modal-body input')
 
