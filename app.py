@@ -1,27 +1,81 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, make_response, Blueprint
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import secrets
 from faker import Faker
-from modeldb import db, User, Role  
+from modeldb import db, User, Role, VisitLog
+from functools import wraps
+from datetime import datetime
+from sqlalchemy import func
+import io
+import csv
 import os
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SelectField, SubmitField
 from wtforms.validators import DataRequired, Length, EqualTo, Regexp, ValidationError
+from reports import reports_bp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dss.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.register_blueprint(reports_bp)
 
 db.init_app(app)  # Инициализируем базу данных внутри приложения
 
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'login'  
+login_manager.login_view = 'login'
 login_manager.login_message = "Для доступа к этой странице необходимо войти."
 
-fake = Faker(['ru_RU']) 
+fake = Faker(['ru_RU'])
+
+
+def check_rights(action):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                flash('Требуется авторизация для доступа к данной странице.', 'warning')
+                return redirect(url_for('login'))
+
+            user_id = kwargs.get('user_id')  # Извлекаем user_id
+
+            if not hasattr(current_user, 'role') or not current_user.role:
+                # Разрешаем редактирование своего профиля, даже если нет роли
+                if action == 'edit_user' and user_id == current_user.id:
+                    return f(*args, **kwargs)
+                flash('У вас не назначена роль.', 'warning')
+                return redirect(url_for('index'))
+
+            if current_user.role.name == 'admin':
+                return f(*args, **kwargs)
+
+            elif current_user.role.name == 'user':
+                if action == 'edit_user' and user_id != current_user.id:
+                    flash('Вы можете редактировать только свой профиль.', 'danger')
+                    return redirect(url_for('index'))
+                elif action in ('create_user', 'delete_user', 'view_all_logs', 'view_page_visits', 'view_user_visits'):
+                    flash('У вас недостаточно прав для доступа к данной странице.', 'danger')
+                    return redirect(url_for('index'))
+                else:
+                    return f(*args, **kwargs)
+
+            flash('У вас недостаточно прав для доступа к данной странице.', 'danger')
+            return redirect(url_for('index'))
+        return decorated_function
+    return decorator
+
+
+@app.before_request
+def before_request_callback():
+    path = request.path
+    if path.startswith('/static'):  # Игнорируем запросы к статическим файлам
+        return
+    user_id = current_user.id if current_user.is_authenticated else None
+    visit_log = VisitLog(path=path, user_id=user_id)
+    db.session.add(visit_log)
+    db.session.commit()
 
 
 def validate_password(form, field):
@@ -75,6 +129,7 @@ class CreateUserForm(FlaskForm):
 
 @app.route('/create_user', methods=['GET', 'POST'])
 @login_required
+@check_rights('create_user')
 def create_user():
     form = CreateUserForm()
 
@@ -103,7 +158,7 @@ def create_user():
         db.session.commit()
 
         flash('Пользователь успешно создан!', 'success')
-        return redirect(url_for('index'))  # Перенаправляем на главную страницу
+        return redirect(url_for('index'))
 
     return render_template('create_user.html', form=form)
 
@@ -118,6 +173,7 @@ class EditUserForm(FlaskForm):
 
 @app.route('/edit_user_submit/<int:user_id>', methods=['POST'])
 @login_required
+@check_rights('edit_user')
 def edit_user_submit(user_id):
     user = User.query.get_or_404(user_id)
 
@@ -125,8 +181,13 @@ def edit_user_submit(user_id):
     user.first_name = request.form.get('first_name')
     user.last_name = request.form.get('last_name')
     user.middle_name = request.form.get('middle_name')
-    user.role_id = request.form.get('role') if request.form.get('role') != 'None' else None
 
+    # Разрешаем изменение роли только администраторам
+    if current_user.role and current_user.role.name == 'admin' and user.id != current_user.id:
+        user.role_id = request.form.get('role') if request.form.get('role') != 'None' else None
+    elif current_user.id != user.id:  # Если пользователь не админ и пытается изменить чужой профиль, то не разрешаем
+        flash('У вас недостаточно прав для доступа к данной странице.', 'danger')
+        return redirect(url_for('index'))
     try:
         db.session.commit()
         flash('Пользователь успешно отредактирован!', 'success')
@@ -139,9 +200,9 @@ def edit_user_submit(user_id):
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
+@check_rights('delete_user')
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
-
     try:
         db.session.delete(user)
         db.session.commit()
@@ -160,6 +221,9 @@ def load_user(user_id):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -250,4 +314,4 @@ if __name__ == '__main__':
     if not os.path.exists('dss.db'):
         with app.app_context():
             db.create_all()  # Создаем таблицы
-    app.run(debug=True)
+        app.run(debug=True)

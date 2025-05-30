@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>Статистика посещений по пользователям</h1>
+    <p><a href="{{ url_for('reports.view_visit_logs') }}" class="a_class">Журнал посещений</a> | 
+        <a href="{{ url_for('reports.page_visits') }}" class="a_class">Отчет по страницам</a></p>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>№</th>
+                <th>Пользователь</th>
+                <th>Количество посещений</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in user_visits %}
+                <tr>
+                    <td>{{ start_index }}</td>
+                    <td>{{ row.user_info }}</td>
+                    <td>{{ row.visit_count }}</td>
+                </tr>
+                {% set start_index = start_index + 1 %}
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="{{ url_for('reports.export_user_visits_csv') }}" class="a_class">Экспорт в CSV</a>
+{% endblock %}
